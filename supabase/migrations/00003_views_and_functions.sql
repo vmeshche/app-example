@@ -83,7 +83,26 @@ CREATE OR REPLACE VIEW user_schedule AS
 SELECT
   uss.user_id,
   uss.saved_at,
-  sd.*
+  sd.id AS session_id,
+  sd.event_id,
+  sd.title AS session_title,
+  sd.description AS session_description,
+  sd.category_id,
+  sd.room_id,
+  sd.start_time,
+  sd.end_time,
+  sd.status AS session_status,
+  sd.image_url,
+  sd.likes_count,
+  sd.stream_url,
+  sd.recording_url,
+  sd.materials_url,
+  sd.category_name,
+  sd.category_color,
+  sd.room_name,
+  sd.room_type,
+  sd.room_floor,
+  sd.speakers AS session_speakers
 FROM user_saved_sessions uss
 JOIN session_details sd ON sd.id = uss.session_id;
 
@@ -98,33 +117,30 @@ BEGIN
       SELECT row_to_json(e.*) FROM events e WHERE e.slug = event_slug
     ),
     'live_sessions', (
-      SELECT json_agg(sd.*)
+      SELECT json_agg(to_jsonb(sd) ORDER BY sd.start_time)
       FROM session_details sd
       JOIN events e ON e.id = sd.event_id
       WHERE e.slug = event_slug AND sd.status = 'live'
-      ORDER BY sd.start_time
     ),
     'upcoming_sessions', (
-      SELECT json_agg(sd.*)
+      SELECT json_agg(to_jsonb(sd) ORDER BY sd.start_time)
       FROM session_details sd
       JOIN events e ON e.id = sd.event_id
       WHERE e.slug = event_slug AND sd.status = 'upcoming'
-      ORDER BY sd.start_time
       LIMIT 10
     ),
     'featured_speakers', (
-      SELECT json_agg(sd.*)
+      SELECT json_agg(to_jsonb(sd))
       FROM speaker_details sd
       JOIN events e ON e.id = sd.event_id
       WHERE e.slug = event_slug
       LIMIT 6
     ),
     'venue_map', (
-      SELECT json_agg(vl.*)
+      SELECT json_agg(to_jsonb(vl) ORDER BY vl.pos_y, vl.pos_x)
       FROM venue_locations vl
       JOIN events e ON e.id = vl.event_id
       WHERE e.slug = event_slug
-      ORDER BY vl.pos_y, vl.pos_x
     )
   ) INTO result;
 
@@ -137,7 +153,7 @@ CREATE OR REPLACE FUNCTION get_my_schedule(user_id UUID)
 RETURNS JSONB AS $$
 BEGIN
   RETURN (
-    SELECT json_agg(us.* ORDER BY us.start_time)
+    SELECT json_agg(to_jsonb(us) ORDER BY us.start_time)
     FROM user_schedule us
     WHERE us.user_id = get_my_schedule.user_id
   );
