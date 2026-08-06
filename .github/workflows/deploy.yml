@@ -46,7 +46,7 @@ jobs:
         run: supabase db push
 
       - name: Deploy Edge Functions
-        run: supabase functions deploy api --project-ref "$SUPABASE_PROJECT_ID"
+        run: supabase functions deploy api --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
 
       - name: Deploy Complete
         run: echo "✅ Venue Guide backend deployed to Supabase!"
