@@ -80,7 +80,10 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const url = new URL(req.url);
-  const path = url.pathname.replace("/v1", "");
+  // Strip /functions/v1/api prefix + API version prefix
+  let path = url.pathname;
+  path = path.replace(/^\/functions\/v1\/api\/v1/, "").replace(/^\/v1/, "");
+  if (!path) path = "/";
 
   const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
