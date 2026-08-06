@@ -1,10 +1,12 @@
 # ============================================================
 # GitHub Actions — Deploy to Supabase
 # ============================================================
-# Required secrets in GitHub:
-#   SUPABASE_ACCESS_TOKEN  — Personal access token from https://supabase.com/dashboard/account/tokens
-#   SUPABASE_PROJECT_ID    — Project ref (e.g., "abcdefghijklm")
-#   SUPABASE_DB_PASSWORD   — Database password for migrations
+# Required SECRETS (not variables!) in GitHub:
+#   Settings → Secrets and variables → Actions → Secrets → New repository secret
+#
+#   SUPABASE_ACCESS_TOKEN  — from https://supabase.com/dashboard/account/tokens
+#   SUPABASE_PROJECT_ID    — Project Reference ID (Settings → General)
+#   SUPABASE_DB_PASSWORD   — Database password
 # ============================================================
 
 name: Deploy to Supabase
@@ -21,6 +23,11 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Map all secrets as env vars for the whole job
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID:   ${{ secrets.SUPABASE_PROJECT_ID }}
+      SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -33,23 +40,18 @@ jobs:
 
       - name: Link Supabase Project
         run: |
+          echo "Linking project: $SUPABASE_PROJECT_ID"
           supabase link --project-ref "$SUPABASE_PROJECT_ID"
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
 
       - name: Run Database Migrations
         run: |
+          echo "Running migrations..."
           supabase db push
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       - name: Deploy Edge Functions
         run: |
+          echo "Deploying API function..."
           supabase functions deploy api --project-ref "$SUPABASE_PROJECT_ID"
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy Complete
         run: echo "✅ Venue Guide backend deployed to Supabase!"
