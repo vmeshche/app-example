@@ -15,17 +15,9 @@ port = 54322
 shadow_port = 54320
 major_version = 15
 
-[db.seed]
-enabled = true
-sql_path = "./supabase/seed.sql"
-
 [studio]
 enabled = true
 port = 54323
-
-[inbucket]
-enabled = true
-port = 54324
 
 [storage]
 enabled = true
@@ -48,7 +40,7 @@ enabled = true
 
 [functions.api]
 enabled = true
-verify_jwt = false  # Allow public access to event data; auth handled in function
+verify_jwt = false
 
 [analytics]
 enabled = false
