@@ -1,6 +1,6 @@
 // ============================================================
 // Venue Guide — Edge Function API
-// Deployed to Supabase Edge Functions
+// Язык: русский. P5-решения: поиск убран, auth обязателен.
 // ============================================================
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -13,7 +13,6 @@ const corsHeaders = {
 };
 
 serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -21,13 +20,11 @@ serve(async (req: Request) => {
   const url = new URL(req.url);
   const path = url.pathname.replace("/api", "");
 
-  // Create Supabase client with service role key for full DB access
   const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
-  // Create authenticated client from request
   const authHeader = req.headers.get("Authorization") ?? "";
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -36,21 +33,67 @@ serve(async (req: Request) => {
   );
 
   try {
+    // ── Auth Routes (public) ────────────────────────────────
+
+    // POST /auth/signup — Register new user
+    if (req.method === "POST" && path === "/auth/signup") {
+      const { email, password, display_name, company, job_title } = await req.json();
+      if (!email || !password) {
+        return json({ error: "Email и пароль обязательны" }, corsHeaders, 400);
+      }
+
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { display_name, company, job_title },
+      });
+
+      if (error) throw error;
+
+      // Create user profile
+      const { error: profileErr } = await supabaseAdmin
+        .from("user_profiles")
+        .insert({
+          id: data.user.id,
+          display_name: display_name || email.split("@")[0],
+          company: company || "",
+          job_title: job_title || "",
+          ticket_type: "3-Day Pass",
+        });
+
+      if (profileErr) throw profileErr;
+
+      return json({ user: data.user }, corsHeaders, 201);
+    }
+
+    // POST /auth/signin — Get JWT token
+    if (req.method === "POST" && path === "/auth/signin") {
+      const { email, password } = await req.json();
+      if (!email || !password) {
+        return json({ error: "Email и пароль обязательны" }, corsHeaders, 400);
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+      return json(data, corsHeaders);
+    }
+
     // ── Public Routes ──────────────────────────────────────
 
     // GET /event/:slug — Full event dashboard
     const eventMatch = path.match(/^\/event\/([a-z0-9-]+)$/);
     if (req.method === "GET" && eventMatch) {
       const slug = eventMatch[1];
-
-      // Fetch event
       const { data: event, error: eventErr } = await supabaseAdmin
         .from("events").select("*").eq("slug", slug).single();
       if (eventErr) throw eventErr;
 
       const eventId = event.id;
-
-      // Fetch all dashboard data in parallel
       const [
         { data: live },
         { data: upcoming },
@@ -78,26 +121,23 @@ serve(async (req: Request) => {
       }, corsHeaders);
     }
 
-    // GET /sessions?event_id=...&status=...&category=...&q=...
+    // GET /sessions?event_id=...&status=...&category=...&day=...
     if (req.method === "GET" && path === "/sessions") {
       const eventId = url.searchParams.get("event_id");
       const status = url.searchParams.get("status");
       const category = url.searchParams.get("category");
-      const query = url.searchParams.get("q");
       const day = url.searchParams.get("day");
 
-      let req = supabaseAdmin.from("session_details").select("*");
-
-      if (eventId) req = req.eq("event_id", eventId);
-      if (status) req = req.eq("status", status);
-      if (category) req = req.eq("category_id", category);
-      if (query) req = req.or(`title.ilike.%${query}%,description.ilike.%${query}%`);
+      let query = supabaseAdmin.from("session_details").select("*");
+      if (eventId) query = query.eq("event_id", eventId);
+      if (status) query = query.eq("status", status);
+      if (category) query = query.eq("category_id", category);
       if (day) {
-        req = req.gte("start_time", `${day}T00:00:00`);
-        req = req.lte("start_time", `${day}T23:59:59`);
+        query = query.gte("start_time", `${day}T00:00:00`);
+        query = query.lte("start_time", `${day}T23:59:59`);
       }
 
-      const { data, error } = await req.order("start_time", { ascending: true });
+      const { data, error } = await query.order("start_time", { ascending: true });
       if (error) throw error;
       return json(data, corsHeaders);
     }
@@ -106,10 +146,7 @@ serve(async (req: Request) => {
     const sessionDetailMatch = path.match(/^\/sessions\/([a-f0-9-]+)$/);
     if (req.method === "GET" && sessionDetailMatch) {
       const { data, error } = await supabaseAdmin
-        .from("session_details")
-        .select("*")
-        .eq("id", sessionDetailMatch[1])
-        .single();
+        .from("session_details").select("*").eq("id", sessionDetailMatch[1]).single();
       if (error) throw error;
       return json(data, corsHeaders);
     }
@@ -117,9 +154,9 @@ serve(async (req: Request) => {
     // GET /speakers?event_id=...
     if (req.method === "GET" && path === "/speakers") {
       const eventId = url.searchParams.get("event_id");
-      let req = supabaseAdmin.from("speakers").select("*");
-      if (eventId) req = req.eq("event_id", eventId);
-      const { data, error } = await req.order("name");
+      let query = supabaseAdmin.from("speakers").select("*");
+      if (eventId) query = query.eq("event_id", eventId);
+      const { data, error } = await query.order("name");
       if (error) throw error;
       return json(data, corsHeaders);
     }
@@ -128,10 +165,7 @@ serve(async (req: Request) => {
     const speakerMatch = path.match(/^\/speakers\/([a-f0-9-]+)$/);
     if (req.method === "GET" && speakerMatch) {
       const { data, error } = await supabaseAdmin
-        .from("speaker_details")
-        .select("*")
-        .eq("id", speakerMatch[1])
-        .single();
+        .from("speaker_details").select("*").eq("id", speakerMatch[1]).single();
       if (error) throw error;
       return json(data, corsHeaders);
     }
@@ -139,9 +173,9 @@ serve(async (req: Request) => {
     // GET /recordings?event_id=...
     if (req.method === "GET" && path === "/recordings") {
       const eventId = url.searchParams.get("event_id");
-      let req = supabaseAdmin.from("recordings").select("*");
-      if (eventId) req = req.eq("event_id", eventId);
-      const { data, error } = await req.order("views_count", { ascending: false });
+      let query = supabaseAdmin.from("recordings").select("*");
+      if (eventId) query = query.eq("event_id", eventId);
+      const { data, error } = await query.order("views_count", { ascending: false });
       if (error) throw error;
       return json(data, corsHeaders);
     }
@@ -149,9 +183,9 @@ serve(async (req: Request) => {
     // GET /map?event_id=...
     if (req.method === "GET" && path === "/map") {
       const eventId = url.searchParams.get("event_id");
-      let req = supabaseAdmin.from("venue_locations").select("*");
-      if (eventId) req = req.eq("event_id", eventId);
-      const { data, error } = await req.order("pos_y");
+      let query = supabaseAdmin.from("venue_locations").select("*");
+      if (eventId) query = query.eq("event_id", eventId);
+      const { data, error } = await query.order("pos_y");
       if (error) throw error;
       return json(data, corsHeaders);
     }
@@ -159,9 +193,9 @@ serve(async (req: Request) => {
     // GET /rooms?event_id=...
     if (req.method === "GET" && path === "/rooms") {
       const eventId = url.searchParams.get("event_id");
-      let req = supabaseAdmin.from("rooms").select("*");
-      if (eventId) req = req.eq("event_id", eventId);
-      const { data, error } = await req.order("name");
+      let query = supabaseAdmin.from("rooms").select("*");
+      if (eventId) query = query.eq("event_id", eventId);
+      const { data, error } = await query.order("name");
       if (error) throw error;
       return json(data, corsHeaders);
     }
@@ -169,116 +203,118 @@ serve(async (req: Request) => {
     // GET /categories?event_id=...
     if (req.method === "GET" && path === "/categories") {
       const eventId = url.searchParams.get("event_id");
-      let req = supabaseAdmin.from("categories").select("*");
-      if (eventId) req = req.eq("event_id", eventId);
-      const { data, error } = await req.order("sort_order");
+      let query = supabaseAdmin.from("categories").select("*");
+      if (eventId) query = query.eq("event_id", eventId);
+      const { data, error } = await query.order("sort_order");
       if (error) throw error;
       return json(data, corsHeaders);
     }
 
     // ── Authenticated Routes ───────────────────────────────
 
-    // Get current user
     const { data: { user } } = await supabase.auth.getUser();
     const userId = user?.id;
 
-    // GET /schedule — User's personal schedule
+    // GET /schedule — Личное расписание
     if (req.method === "GET" && path === "/schedule") {
       if (!userId) return unauthorized();
-      const { data, error } = await supabase.rpc("get_my_schedule", {
-        user_id: userId,
-      });
+      const { data, error } = await supabase
+        .from("user_saved_sessions")
+        .select("session_id")
+        .eq("user_id", userId);
       if (error) throw error;
-      return json(data, corsHeaders);
+
+      // Return session details for saved sessions
+      const sessionIds = (data || []).map((s: { session_id: string }) => s.session_id);
+      if (sessionIds.length === 0) return json([], corsHeaders);
+
+      const { data: sessions, error: sessionsErr } = await supabaseAdmin
+        .from("session_details")
+        .select("*")
+        .in("id", sessionIds)
+        .order("start_time", { ascending: true });
+      if (sessionsErr) throw sessionsErr;
+      return json(sessions, corsHeaders);
     }
 
-    // POST /schedule/:sessionId — Toggle save session
+    // GET /likes — Мои лайки
+    if (req.method === "GET" && path === "/likes") {
+      if (!userId) return unauthorized();
+      const { data, error } = await supabase
+        .from("user_liked_sessions")
+        .select("session_id")
+        .eq("user_id", userId);
+      if (error) throw error;
+      return json((data || []).map((s: { session_id: string }) => s.session_id), corsHeaders);
+    }
+
+    // GET /follows — Мои подписки
+    if (req.method === "GET" && path === "/follows") {
+      if (!userId) return unauthorized();
+      const { data, error } = await supabase
+        .from("user_followed_speakers")
+        .select("speaker_id")
+        .eq("user_id", userId);
+      if (error) throw error;
+      return json((data || []).map((s: { speaker_id: string }) => s.speaker_id), corsHeaders);
+    }
+
+    // POST /schedule/:sessionId — Сохранить/убрать из расписания
     const scheduleMatch = path.match(/^\/schedule\/([a-f0-9-]+)$/);
     if (req.method === "POST" && scheduleMatch) {
       if (!userId) return unauthorized();
       const sessionId = scheduleMatch[1];
-
-      // Check if already saved
       const { data: existing } = await supabase
-        .from("user_saved_sessions")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("session_id", sessionId)
-        .single();
+        .from("user_saved_sessions").select("*")
+        .eq("user_id", userId).eq("session_id", sessionId).single();
 
       if (existing) {
-        const { error } = await supabase
-          .from("user_saved_sessions")
-          .delete()
-          .eq("user_id", userId)
-          .eq("session_id", sessionId);
-        if (error) throw error;
+        await supabase.from("user_saved_sessions").delete()
+          .eq("user_id", userId).eq("session_id", sessionId);
         return json({ saved: false }, corsHeaders);
       } else {
-        const { error } = await supabase
-          .from("user_saved_sessions")
+        await supabase.from("user_saved_sessions")
           .insert({ user_id: userId, session_id: sessionId });
-        if (error) throw error;
         return json({ saved: true }, corsHeaders);
       }
     }
 
-    // POST /like/:sessionId — Toggle like
+    // POST /like/:sessionId — Лайк/анлайк
     const likeMatch = path.match(/^\/like\/([a-f0-9-]+)$/);
     if (req.method === "POST" && likeMatch) {
       if (!userId) return unauthorized();
       const sessionId = likeMatch[1];
-
       const { data: existing } = await supabase
-        .from("user_liked_sessions")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("session_id", sessionId)
-        .single();
+        .from("user_liked_sessions").select("*")
+        .eq("user_id", userId).eq("session_id", sessionId).single();
 
       if (existing) {
-        const { error } = await supabase
-          .from("user_liked_sessions")
-          .delete()
-          .eq("user_id", userId)
-          .eq("session_id", sessionId);
-        if (error) throw error;
+        await supabase.from("user_liked_sessions").delete()
+          .eq("user_id", userId).eq("session_id", sessionId);
         return json({ liked: false }, corsHeaders);
       } else {
-        const { error } = await supabase
-          .from("user_liked_sessions")
+        await supabase.from("user_liked_sessions")
           .insert({ user_id: userId, session_id: sessionId });
-        if (error) throw error;
         return json({ liked: true }, corsHeaders);
       }
     }
 
-    // POST /follow/:speakerId — Toggle follow speaker
+    // POST /follow/:speakerId — Подписаться/отписаться
     const followMatch = path.match(/^\/follow\/([a-f0-9-]+)$/);
     if (req.method === "POST" && followMatch) {
       if (!userId) return unauthorized();
       const speakerId = followMatch[1];
-
       const { data: existing } = await supabase
-        .from("user_followed_speakers")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("speaker_id", speakerId)
-        .single();
+        .from("user_followed_speakers").select("*")
+        .eq("user_id", userId).eq("speaker_id", speakerId).single();
 
       if (existing) {
-        const { error } = await supabase
-          .from("user_followed_speakers")
-          .delete()
-          .eq("user_id", userId)
-          .eq("speaker_id", speakerId);
-        if (error) throw error;
+        await supabase.from("user_followed_speakers").delete()
+          .eq("user_id", userId).eq("speaker_id", speakerId);
         return json({ following: false }, corsHeaders);
       } else {
-        const { error } = await supabase
-          .from("user_followed_speakers")
+        await supabase.from("user_followed_speakers")
           .insert({ user_id: userId, speaker_id: speakerId });
-        if (error) throw error;
         return json({ following: true }, corsHeaders);
       }
     }
@@ -287,42 +323,41 @@ serve(async (req: Request) => {
     if (req.method === "GET" && path === "/notifications") {
       if (!userId) return unauthorized();
       const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
+        .from("notifications").select("*")
         .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(50);
+        .order("created_at", { ascending: false }).limit(50);
       if (error) throw error;
       return json(data, corsHeaders);
     }
 
-    // POST /notifications/:id/read — Mark as read
+    // POST /notifications/:id/read — Отметить прочитанным
     const notifReadMatch = path.match(/^\/notifications\/([a-f0-9-]+)\/read$/);
     if (req.method === "POST" && notifReadMatch) {
       if (!userId) return unauthorized();
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("id", notifReadMatch[1])
-        .eq("user_id", userId);
-      if (error) throw error;
+      await supabase.from("notifications").update({ is_read: true })
+        .eq("id", notifReadMatch[1]).eq("user_id", userId);
       return json({ success: true }, corsHeaders);
     }
 
-    // GET /profile
+    // GET /profile — Профиль пользователя
     if (req.method === "GET" && path === "/profile") {
       if (!userId) return unauthorized();
       const { data, error } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
-      if (error) throw error;
-      return json(data, corsHeaders);
+        .from("user_profiles").select("*").eq("id", userId).single();
+      if (error) {
+        // Return basic profile from auth if no extended profile
+        return json({
+          id: userId,
+          display_name: user.user_metadata?.display_name || user.email?.split("@")[0],
+          email: user.email,
+          ticket_type: "3-Day Pass",
+        }, corsHeaders);
+      }
+      return json({ ...data, email: user.email }, corsHeaders);
     }
 
     // 404
-    return json({ error: "Not found", path }, corsHeaders, 404);
+    return json({ error: "Не найдено", path }, corsHeaders, 404);
   } catch (err) {
     return json({ error: err.message }, corsHeaders, 500);
   }
@@ -336,5 +371,5 @@ function json(data: unknown, headers: Record<string, string>, status = 200) {
 }
 
 function unauthorized() {
-  return json({ error: "Unauthorized" }, corsHeaders, 401);
+  return json({ error: "Требуется авторизация" }, corsHeaders, 401);
 }
