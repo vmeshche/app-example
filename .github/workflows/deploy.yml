@@ -23,7 +23,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: SUPABASE_ACCESS_TOKEN
+    environment: prod
 
     steps:
       - name: Checkout
