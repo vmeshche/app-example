@@ -98,6 +98,9 @@ serve(async (req: Request) => {
   );
 
   try {
+    // TEMP DEBUG
+    return json({ pathname: url.pathname, path, method: req.method, full_url: req.url }, corsHeaders);
+
     const { data: { user } } = await supabase.auth.getUser();
     const userId = user?.id;
 
