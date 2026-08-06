@@ -1,0 +1,1031 @@
+openapi: "3.0.3"
+info:
+  title: Venue Guide API
+  description: |
+    API для iOS-приложения Venue Guide — компаньона технологических конференций.
+    Реализует контракт `07-api-contract.md`.
+
+    **Базовый URL:** `https://xbmiotvbgrwbjgxknodp.supabase.co/functions/v1/api`
+
+    **Авторизация:** `Bearer <access_token>` (получить через `POST /auth/token`)
+
+    **Язык:** русский (`Accept-Language: ru-RU`)
+
+    **Демо-пользователь:** `demo@venueguide.com` / `demopass123`
+  version: "1.0.0"
+  contact:
+    name: Venue Guide Team
+
+servers:
+  - url: https://xbmiotvbgrwbjgxknodp.supabase.co/functions/v1/api
+    description: Production (Supabase Edge Functions)
+
+tags:
+  - name: Auth
+    description: Авторизация и токены
+  - name: Conference
+    description: Данные конференции — публичные
+  - name: Sessions
+    description: Сессии и доклады
+  - name: Speakers
+    description: Спикеры
+  - name: Profile
+    description: Профиль пользователя (JWT)
+  - name: Actions
+    description: Действия пользователя (лайк, сохранение, подписка)
+  - name: Playback
+    description: Видеоплеер и прогресс просмотра
+  - name: Library
+    description: Библиотека записей
+  - name: Downloads
+    description: Офлайн-загрузки
+  - name: Notifications
+    description: Уведомления и push
+  - name: Devices
+    description: Регистрация устройств (APNs)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Код ошибки
+              example: SESSION_NOT_FOUND
+            message:
+              type: string
+              description: Человекочитаемое описание
+              example: Сессия не найдена
+            request_id:
+              type: string
+              format: uuid
+              example: req_01JABC123
+            details:
+              type: object
+      required: [error]
+
+    Conference:
+      type: object
+      properties:
+        id:         { type: string, example: "00000000-0000-0000-0000-000000000001" }
+        slug:       { type: string, example: "techconf-2026" }
+        name:       { type: string, example: "TechConf 2026" }
+        venue_name: { type: string, example: "Moscone Center" }
+        city:       { type: string, example: "Сан-Франциско" }
+        timezone:   { type: string, example: "America/Los_Angeles" }
+        starts_at:  { type: string, format: date-time, example: "2026-07-29T08:00:00-07:00" }
+        ends_at:    { type: string, format: date-time, example: "2026-07-31T18:00:00-07:00" }
+        logo_url:   { type: string, nullable: true }
+
+    SessionSummary:
+      type: object
+      properties:
+        id:              { type: string }
+        title:           { type: string, example: "Будущее пространственных вычислений" }
+        status:          { type: string, enum: [live, upcoming, recorded] }
+        starts_at:       { type: string, format: date-time }
+        ends_at:         { type: string, format: date-time }
+        duration_seconds: { type: integer, nullable: true }
+        category:        { type: string, example: "keynote" }
+        room:            { $ref: "#/components/schemas/Room" }
+        speaker:         { $ref: "#/components/schemas/SpeakerSummary" }
+        thumbnail_url:   { type: string, nullable: true }
+        likes_count:     { type: integer }
+        user_state:      { $ref: "#/components/schemas/UserSessionState" }
+
+    SessionDetail:
+      allOf:
+        - $ref: "#/components/schemas/SessionSummary"
+        - type: object
+          properties:
+            conference_id: { type: string }
+            description:   { type: string, example: "Глубокое исследование..." }
+            hero_image_url: { type: string, nullable: true }
+            tags:          { type: array, items: { type: string } }
+            media:         { $ref: "#/components/schemas/Media" }
+
+    Media:
+      type: object
+      properties:
+        available:         { type: boolean }
+        duration_seconds:  { type: integer, nullable: true }
+
+    Room:
+      type: object
+      properties:
+        id:             { type: string }
+        name:           { type: string, example: "Главная сцена" }
+        venue_area_id:  { type: string, nullable: true }
+
+    SpeakerSummary:
+      type: object
+      properties:
+        id:         { type: string }
+        name:       { type: string, example: "Сара Чен" }
+        company:    { type: string, example: "Apple" }
+        role:       { type: string, example: "VP Platform Engineering" }
+        avatar_url: { type: string, nullable: true }
+        user_state: { $ref: "#/components/schemas/UserFollowState" }
+
+    SpeakerDetail:
+      allOf:
+        - $ref: "#/components/schemas/SpeakerSummary"
+        - type: object
+          properties:
+            bio:     { type: string }
+            topics:  { type: array, items: { type: string } }
+            sessions:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:         { type: string }
+                  title:      { type: string }
+                  status:     { type: string }
+                  starts_at:  { type: string, format: date-time }
+                  ends_at:    { type: string, format: date-time }
+                  category:   { type: string }
+                  room:       { $ref: "#/components/schemas/Room" }
+
+    UserSessionState:
+      type: object
+      properties:
+        saved: { type: boolean }
+        liked: { type: boolean }
+
+    UserFollowState:
+      type: object
+      properties:
+        followed: { type: boolean }
+
+    HomeDashboard:
+      type: object
+      properties:
+        conference_id:      { type: string }
+        server_time:        { type: string, format: date-time }
+        live:
+          type: array
+          items:
+            type: object
+            properties:
+              session:  { $ref: "#/components/schemas/SessionSummary" }
+              position: { type: string, enum: [hero, secondary] }
+        up_next:
+          type: array
+          items:
+            type: object
+            properties:
+              session:           { $ref: "#/components/schemas/SessionSummary" }
+              starts_in_seconds: { type: integer }
+        featured_speakers:
+          type: array
+          items: { $ref: "#/components/schemas/SpeakerSummary" }
+        capacity_alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              id:            { type: string }
+              venue_area_id: { type: string }
+              title:         { type: string }
+              body:          { type: string }
+
+    ScheduleResponse:
+      type: object
+      properties:
+        conference_id: { type: string }
+        days:
+          type: array
+          items:
+            type: object
+            properties:
+              date:     { type: string, format: date }
+              label:    { type: string, example: "День 1" }
+              sessions:
+                type: array
+                items: { $ref: "#/components/schemas/SessionSummary" }
+        next_page_token: { type: string, nullable: true }
+
+    VenueMap:
+      type: object
+      properties:
+        id:        { type: string }
+        version:   { type: integer }
+        asset_url: { type: string, nullable: true }
+        areas:
+          type: array
+          items:
+            type: object
+            properties:
+              id:              { type: string }
+              name:            { type: string }
+              type:            { type: string, enum: [stage, workshop, food, expo, registration, entrance, info] }
+              capacity:        { type: integer, nullable: true }
+              current_session: { nullable: true }
+              next_session:    { nullable: true }
+              services:        { type: array, items: { type: object } }
+              hours:           { type: string, nullable: true }
+              geometry:
+                type: object
+                properties:
+                  x: { type: number }
+                  y: { type: number }
+                  w: { type: number }
+                  h: { type: number }
+
+    AuthRequest:
+      type: object
+      required: [grant_type]
+      properties:
+        grant_type:
+          type: string
+          enum: [password]
+        email:    { type: string, format: email }
+        password: { type: string, format: password }
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:  { type: string }
+        refresh_token: { type: string }
+        token_type:    { type: string, example: "Bearer" }
+        expires_in:    { type: integer, example: 3600 }
+        user:
+          type: object
+          properties:
+            id:                { type: string }
+            email:             { type: string }
+            display_name:      { type: string }
+            avatar_url:        { type: string, nullable: true }
+            role:              { type: string, nullable: true }
+            company:           { type: string, nullable: true }
+            verified_attendee: { type: boolean }
+
+    RefreshRequest:
+      type: object
+      required: [grant_type, refresh_token]
+      properties:
+        grant_type:    { type: string, enum: [refresh_token] }
+        refresh_token: { type: string }
+
+    Me:
+      type: object
+      properties:
+        id:                       { type: string }
+        email:                    { type: string }
+        display_name:             { type: string }
+        avatar_url:               { type: string, nullable: true }
+        role:                     { type: string }
+        company:                  { type: string }
+        verified_attendee:        { type: boolean }
+        stats:
+          type: object
+          properties:
+            saved:     { type: integer }
+            watched:   { type: integer }
+            following: { type: integer }
+        conference_id:            { type: string }
+        notification_preferences:
+          type: object
+          properties:
+            session_reminders: { type: boolean }
+            announcements:     { type: boolean }
+
+    Ticket:
+      type: object
+      properties:
+        id:             { type: string }
+        ticket_number:  { type: string, example: "TC26-4821" }
+        conference_id:  { type: string }
+        type:           { type: string, example: "general" }
+        pass_name:      { type: string, example: "3-Day Pass" }
+        valid_from:     { type: string, format: date-time }
+        valid_to:       { type: string, format: date-time }
+        attendee:
+          type: object
+          properties:
+            id:      { type: string }
+            name:    { type: string }
+            email:   { type: string }
+            company: { type: string }
+        qr_payload:    { type: string }
+        status:        { type: string, example: "valid" }
+
+    PlaybackInfo:
+      type: object
+      properties:
+        session_id:              { type: string }
+        kind:                    { type: string, enum: [live, recording] }
+        stream_url:              { type: string, nullable: true }
+        expires_at:              { type: string, format: date-time }
+        available_qualities:     { type: array, items: { type: string } }
+        duration_seconds:        { type: integer, nullable: true }
+        resume_position_seconds: { type: integer }
+
+    PlaybackProgressRequest:
+      type: object
+      properties:
+        position_seconds:  { type: integer }
+        duration_seconds:  { type: integer }
+        completed:         { type: boolean }
+        quality:           { type: string, example: "1080p" }
+        client_updated_at: { type: string, format: date-time }
+
+    PlaybackProgressResponse:
+      type: object
+      properties:
+        session_id:       { type: string }
+        position_seconds: { type: integer }
+        duration_seconds: { type: integer }
+        progress:         { type: number }
+        completed:        { type: boolean }
+        updated_at:       { type: string, format: date-time }
+
+    LibraryResponse:
+      type: object
+      properties:
+        section: { type: string, enum: [recent, favorites, downloads] }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              session:          { $ref: "#/components/schemas/SessionSummary" }
+              progress:         { type: number, nullable: true }
+              position_seconds: { type: integer, nullable: true }
+              last_watched_at:  { type: string, format: date-time, nullable: true }
+              download:         { nullable: true }
+        next_page_token: { type: string, nullable: true }
+
+    DownloadRequest:
+      type: object
+      properties:
+        quality:        { type: string, example: "720p" }
+        network_policy: { type: string, example: "wifi_only" }
+
+    DownloadStatus:
+      type: object
+      properties:
+        download_id:  { type: string }
+        session_id:   { type: string }
+        status:       { type: string, enum: [queued, downloading, ready, failed, expired] }
+        size_bytes:   { type: integer, nullable: true }
+        file_url:     { type: string, nullable: true }
+        expires_at:   { type: string, format: date-time, nullable: true }
+
+    NotificationResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id:         { type: string }
+              type:       { type: string, enum: [reminder, announcement, change, recording] }
+              title:      { type: string }
+              body:       { type: string, nullable: true }
+              created_at: { type: string, format: date-time }
+              read_at:    { type: string, format: date-time, nullable: true }
+              deep_link:  { type: string, nullable: true }
+        unread_count:    { type: integer }
+        next_page_token: { type: string, nullable: true }
+
+    DeviceRequest:
+      type: object
+      required: [device_id]
+      properties:
+        platform:    { type: string, example: "ios" }
+        device_id:   { type: string }
+        apns_token:  { type: string }
+        environment: { type: string, example: "production" }
+        app_version: { type: string, example: "1.0.0" }
+        locale:      { type: string, example: "ru-RU" }
+        timezone:    { type: string }
+
+    Device:
+      type: object
+      properties:
+        id:           { type: string }
+        device_id:    { type: string }
+        platform:     { type: string }
+        push_enabled: { type: boolean }
+        app_version:  { type: string }
+        created_at:   { type: string, format: date-time }
+
+    LikeRequest:
+      type: object
+      properties:
+        liked: { type: boolean }
+
+    LikeResponse:
+      type: object
+      properties:
+        session_id:  { type: string }
+        liked:       { type: boolean }
+        likes_count: { type: integer }
+
+    ToggleResponse:
+      type: object
+      properties:
+        session_id: { type: string }
+        saved:      { type: boolean }
+        updated_at: { type: string, format: date-time }
+
+    FollowResponse:
+      type: object
+      properties:
+        speaker_id: { type: string }
+        followed:   { type: boolean }
+        updated_at: { type: string, format: date-time }
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ── Auth ──────────────────────────────────────────────────
+  /auth/token:
+    post:
+      tags: [Auth]
+      summary: Получить токен доступа
+      description: Аутентификация по email и паролю. Возвращает access_token, refresh_token и профиль пользователя.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRequest"
+            example:
+              grant_type: password
+              email: demo@venueguide.com
+              password: demopass123
+      responses:
+        "200":
+          description: Токен получен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Неверные учетные данные
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/token/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновить токен
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Новый токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          $ref: "#/components/responses/TokenExpired"
+
+  # ── Conference ────────────────────────────────────────────
+  /conferences/current:
+    get:
+      tags: [Conference]
+      summary: Текущая конференция
+      description: Возвращает активную или ближайшую конференцию.
+      security: []
+      responses:
+        "200":
+          description: Конференция
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conference"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /conferences/{conference_id}/home:
+    get:
+      tags: [Conference]
+      summary: Дашборд Home
+      description: Live-сессии, предстоящие сохранённые доклады, избранные спикеры.
+      security: []
+      parameters:
+        - name: conference_id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "00000000-0000-0000-0000-000000000001"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Данные дашборда
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeDashboard"
+
+  /conferences/{conference_id}/schedule:
+    get:
+      tags: [Conference]
+      summary: Расписание по дням
+      parameters:
+        - $ref: "#/components/parameters/ConferenceId"
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+            example: "2026-07-29"
+        - name: status
+          in: query
+          schema:
+            type: string
+            example: "live,upcoming,recorded"
+      responses:
+        "200":
+          description: Расписание, сгруппированное по дням
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleResponse"
+
+  /conferences/{conference_id}/venue-map:
+    get:
+      tags: [Conference]
+      summary: Карта площадки
+      parameters:
+        - $ref: "#/components/parameters/ConferenceId"
+      responses:
+        "200":
+          description: Карта с зонами
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VenueMap"
+
+  # ── Sessions ──────────────────────────────────────────────
+  /sessions/{session_id}:
+    get:
+      tags: [Sessions]
+      summary: Детали сессии
+      description: Полная карточка сессии. Статус вычисляется сервером относительно server_time. Включает user_state при авторизации.
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "00000000-0000-0000-0000-000000000201"
+      responses:
+        "200":
+          description: Сессия
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionDetail"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+
+  /sessions/{session_id}/like:
+    put:
+      tags: [Actions]
+      summary: Лайкнуть/анлайкнуть сессию
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LikeRequest"
+            example:
+              liked: true
+      responses:
+        "200":
+          description: Результат
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LikeResponse"
+
+  /sessions/{session_id}/playback:
+    get:
+      tags: [Playback]
+      summary: Получить URL для плеера
+      description: Проверяет доступ и выдаёт короткоживущий URL для AVPlayer. Для live и recorded используется HLS.
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: quality
+          in: query
+          schema:
+            type: string
+            enum: [auto, "1080p", "720p"]
+            default: auto
+      responses:
+        "200":
+          description: URL для воспроизведения
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaybackInfo"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "410":
+          description: Медиа больше недоступно
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+                example:
+                  error:
+                    code: MEDIA_EXPIRED
+                    message: Запись больше недоступна
+
+  /sessions/{session_id}/downloads:
+    post:
+      tags: [Downloads]
+      summary: Создать загрузку
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DownloadRequest"
+      responses:
+        "202":
+          description: Загрузка создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadStatus"
+
+  # ── Speakers ──────────────────────────────────────────────
+  /speakers/{speaker_id}:
+    get:
+      tags: [Speakers]
+      summary: Профиль спикера
+      parameters:
+        - name: speaker_id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "00000000-0000-0000-0000-000000000101"
+      responses:
+        "200":
+          description: Спикер
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpeakerDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Profile ───────────────────────────────────────────────
+  /me:
+    get:
+      tags: [Profile]
+      summary: Профиль пользователя
+      description: Актуальный профиль, статистика, настройки уведомлений и текущая конференция.
+      responses:
+        "200":
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/TokenExpired"
+
+  /me/ticket:
+    get:
+      tags: [Profile]
+      summary: Билет и QR
+      description: Apple Wallet-стиль билет с QR payload для отображения.
+      responses:
+        "200":
+          description: Билет
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+
+  # ── Actions ───────────────────────────────────────────────
+  /me/saved-sessions/{session_id}:
+    put:
+      tags: [Actions]
+      summary: Сохранить в расписание
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Сохранено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToggleResponse"
+    delete:
+      tags: [Actions]
+      summary: Убрать из расписания
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Убрано
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToggleResponse"
+
+  /me/followed-speakers/{speaker_id}:
+    put:
+      tags: [Actions]
+      summary: Подписаться на спикера
+      parameters:
+        - name: speaker_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Подписка оформлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowResponse"
+    delete:
+      tags: [Actions]
+      summary: Отписаться от спикера
+      parameters:
+        - name: speaker_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Подписка отменена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowResponse"
+
+  # ── Playback ──────────────────────────────────────────────
+  /me/playback/{session_id}:
+    put:
+      tags: [Playback]
+      summary: Сохранить прогресс просмотра
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaybackProgressRequest"
+      responses:
+        "200":
+          description: Прогресс сохранён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaybackProgressResponse"
+
+  # ── Library ───────────────────────────────────────────────
+  /me/library:
+    get:
+      tags: [Library]
+      summary: Библиотека записей
+      parameters:
+        - name: section
+          in: query
+          schema:
+            type: string
+            enum: [recent, favorites, downloads]
+            default: recent
+      responses:
+        "200":
+          description: Контент библиотеки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryResponse"
+
+  # ── Downloads ─────────────────────────────────────────────
+  /me/downloads/{download_id}:
+    get:
+      tags: [Downloads]
+      summary: Статус загрузки
+      parameters:
+        - name: download_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Статус
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadStatus"
+    delete:
+      tags: [Downloads]
+      summary: Отменить загрузку
+      parameters:
+        - name: download_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Загрузка отменена
+
+  # ── Notifications ─────────────────────────────────────────
+  /me/notifications:
+    get:
+      tags: [Notifications]
+      summary: Список уведомлений
+      parameters:
+        - name: unread_only
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Уведомления
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationResponse"
+
+  /me/notifications/{notification_id}/read:
+    post:
+      tags: [Notifications]
+      summary: Отметить прочитанным
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Отмечено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+
+  /me/notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Отметить все прочитанными
+      responses:
+        "200":
+          description: Все отмечены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+
+  # ── Devices ───────────────────────────────────────────────
+  /me/devices:
+    post:
+      tags: [Devices]
+      summary: Зарегистрировать устройство
+      description: Регистрирует APNs token после получения системного разрешения на push-уведомления.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRequest"
+      responses:
+        "201":
+          description: Устройство зарегистрировано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device_id:    { type: string }
+                  push_enabled: { type: boolean }
+    get:
+      tags: [Devices]
+      summary: Список устройств
+      responses:
+        "200":
+          description: Устройства
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Device"
+
+  /me/devices/{device_id}:
+    delete:
+      tags: [Devices]
+      summary: Отписать устройство
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Устройство отписано
+
+  parameters:
+    ConferenceId:
+      name: conference_id
+      in: path
+      required: true
+      schema:
+        type: string
+        example: "00000000-0000-0000-0000-000000000001"
+
+  responses:
+    TokenExpired:
+      description: Токен истёк или отсутствует
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: TOKEN_EXPIRED
+              message: Требуется авторизация
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: NOT_FOUND
+              message: Не найдено
+    SessionNotFound:
+      description: Сессия не найдена
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: SESSION_NOT_FOUND
+              message: Сессия не найдена
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: FORBIDDEN
+              message: Доступ запрещён
