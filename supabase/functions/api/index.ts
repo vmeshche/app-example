@@ -85,6 +85,11 @@ serve(async (req: Request) => {
   path = path.replace(/^\/functions\/v1\/api\/v1/, "").replace(/^\/v1/, "");
   if (!path) path = "/";
 
+  // TEMP DEBUG: return path info for first test
+  if (path === "/debug") {
+    return json({ pathname: url.pathname, path, method: req.method }, corsHeaders);
+  }
+
   const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
