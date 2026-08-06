@@ -1,113 +1,95 @@
 # Venue Guide — Supabase Backend
 
-## What is this?
+Backend для iOS-приложения **Venue Guide** (Event Companion App).  
+Реализует [API-контракт v1](07-api-contract.md).  
+База: [Supabase](https://supabase.com) — PostgreSQL + Auth + Edge Functions.
 
-Backend for the **Venue Guide** iOS event companion app.  
-Built on [Supabase](https://supabase.com) — PostgreSQL + Auth + Edge Functions.
-
-## Quick Start
-
-```bash
-# 1. Install Supabase CLI
-brew install supabase/tap/supabase
-
-# 2. Start local Supabase
-supabase start
-
-# 3. Run migrations
-supabase db reset
-
-# 4. Deploy to production
-supabase link --project-ref <your-project-ref>
-supabase db push
-supabase functions deploy api
-```
-
-## Project Structure
+## Структура
 
 ```
 supabase/
 ├── migrations/
-│   ├── 00001_initial_schema.sql      # Database schema
-│   ├── 00002_seed_data.sql           # Test data (TechConf 2026)
-│   └── 00003_views_and_functions.sql # API views + Postgres functions
+│   ├── 00001_initial_schema.sql        # Таблицы, индексы, RLS
+│   ├── 00002_seed_data.sql             # Тестовые данные (EN, сентябрь)
+│   ├── 00003_views_and_functions.sql   # Views (session_details, speaker_details)
+│   ├── 00004_fix_functions.sql         # Фикс функций
+│   ├── 00005_russian_data.sql          # Данные на русском, даты июль 29–31
+│   └── 00006_playback_downloads_devices.sql  # Playback, downloads, devices
 ├── functions/
-│   └── api/
-│       └── index.ts                  # Edge Function — REST API
-├── config.toml                       # Supabase project config
-└── seed.sql                          # (generated) local dev seed
-
-.github/
-└── workflows/
-    └── deploy.yml                    # CI/CD: deploy to Supabase on push to main
+│   └── api/index.ts                    # Edge Function — REST API v1
+└── seed.sql                            # Локальный посев
 ```
 
-## API Reference
+## Деплой
 
-Base URL: `https://<project-ref>.supabase.co/functions/v1/api`
+```bash
+supabase link --project-ref <ref>
+supabase db push
+supabase functions deploy api --no-verify-jwt
+```
 
-### Public Endpoints
+GitHub Actions деплоит автоматически при пуше в `main`.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/event/:slug` | Full event dashboard |
-| GET | `/sessions` | List sessions (?event_id=&status=&day=&q=) |
-| GET | `/sessions/:id` | Session detail with speakers |
-| GET | `/speakers` | List speakers (?event_id=) |
-| GET | `/speakers/:id` | Speaker profile with sessions |
-| GET | `/recordings` | Library content (?event_id=) |
-| GET | `/map` | Venue map locations (?event_id=) |
-| GET | `/rooms` | Rooms & stages (?event_id=) |
-| GET | `/categories` | Session categories (?event_id=) |
+## API v1
 
-### Authenticated Endpoints
+Base: `https://<project>.supabase.co/functions/v1/api/v1`
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/schedule` | My saved sessions |
-| POST | `/schedule/:id` | Toggle save/unsave session |
-| POST | `/like/:id` | Toggle like/unlike session |
-| POST | `/follow/:id` | Toggle follow/unfollow speaker |
-| GET | `/notifications` | My notifications |
-| POST | `/notifications/:id/read` | Mark notification as read |
-| GET | `/profile` | My user profile |
+### Auth
 
-## Database Schema
+| Метод | Путь | Описание |
+|--------|------|-----------|
+| `POST` | `/auth/token` | Получить токен (password grant) |
+| `POST` | `/auth/token/refresh` | Обновить токен |
 
-### Event Data (public read)
-- **events** — Main event info
-- **categories** — Session categories (Keynote, Workshop, Talk…)
-- **sessions** — Individual talks with times, rooms, status
-- **speakers** — Speaker profiles
-- **session_speakers** — Many-to-many link
-- **rooms** — Venue rooms & stages
-- **venue_locations** — Map coordinates
-- **recordings** — Video archive / library
+### Conference (публичные)
 
-### User Data (auth-required)
-- **user_profiles** — Extends Supabase auth
-- **user_saved_sessions** — Personal schedule
-- **user_liked_sessions** — Liked sessions
-- **user_followed_speakers** — Followed speakers
-- **notifications** — In-app notifications
-- **event_photos** — User photo gallery
+| Метод | Путь | Описание |
+|--------|------|-----------|
+| `GET` | `/conferences/current` | Текущая/ближайшая конференция |
+| `GET` | `/conferences/{id}/home` | Дашборд Home |
+| `GET` | `/conferences/{id}/schedule?date=&status=` | Расписание по дням |
+| `GET` | `/conferences/{id}/venue-map` | Карта площадки |
 
-## GitHub Actions Deployment
+### Sessions & Speakers
 
-1. Get your access token from [Supabase Dashboard → Account → Tokens](https://supabase.com/dashboard/account/tokens)
-2. Find your project ref in Supabase Dashboard → Settings → General
-3. Add these secrets to your GitHub repo:
-   - `SUPABASE_ACCESS_TOKEN`
-   - `SUPABASE_PROJECT_ID`
-   - `SUPABASE_DB_PASSWORD`
-4. Push to `main` — the workflow runs automatically
+| Метод | Путь | Описание |
+|--------|------|-----------|
+| `GET` | `/sessions/{id}` | Детали сессии + user_state |
+| `GET` | `/speakers/{id}` | Профиль спикера + сессии |
 
-## Local Development
+### User actions (JWT)
 
-The seed data creates a complete **TechConf 2026** event with:
-- 13 sessions across 3 days
-- 9 speakers from Apple, OpenAI, Figma, Vercel, Cloudflare, Meta, Anthropic, Stripe, Netflix
-- 6 rooms/stages
-- 10 venue map locations
-- 4 library recordings
-- Demo user: `demo@venueguide.app` / `demopass123`
+| Метод | Путь | Описание |
+|--------|------|-----------|
+| `GET` | `/me` | Профиль, статистика, настройки |
+| `GET` | `/me/ticket` | Билет + QR payload |
+| `GET` | `/me/library?section=` | Библиотека (recent/favorites/downloads) |
+| `GET` | `/me/notifications?unread_only=` | Уведомления |
+| `PUT` | `/me/saved-sessions/{id}` | Сохранить в расписание |
+| `DELETE` | `/me/saved-sessions/{id}` | Убрать из расписания |
+| `PUT` | `/sessions/{id}/like` | Лайкнуть `{"liked": true/false}` |
+| `PUT` | `/me/followed-speakers/{id}` | Подписаться |
+| `DELETE` | `/me/followed-speakers/{id}` | Отписаться |
+| `GET` | `/sessions/{id}/playback` | URL для плеера + resume |
+| `PUT` | `/me/playback/{id}` | Сохранить прогресс |
+| `POST` | `/sessions/{id}/downloads` | Создать загрузку |
+| `GET` | `/me/downloads/{id}` | Статус загрузки |
+| `DELETE` | `/me/downloads/{id}` | Отменить/удалить |
+| `POST` | `/me/devices` | Зарегистрировать APNs |
+| `GET` | `/me/devices` | Список устройств |
+| `DELETE` | `/me/devices/{id}` | Отписать устройство |
+
+### Формат ошибок
+
+```json
+{
+  "error": {
+    "code": "SESSION_NOT_FOUND",
+    "message": "Сессия не найдена",
+    "request_id": "req_01J...",
+    "details": {}
+  }
+}
+```
+
+Коды: `INVALID_REQUEST`, `TOKEN_EXPIRED`, `FORBIDDEN`, `NOT_FOUND`, `SESSION_NOT_FOUND`, `CONFLICT`, `MEDIA_EXPIRED`, `RATE_LIMITED`, `INTERNAL_ERROR`.
