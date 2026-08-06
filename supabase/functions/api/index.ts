@@ -80,9 +80,8 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const url = new URL(req.url);
-  // The function receives the full path after /functions/v1/api
-  // e.g. /conferences/current or /v1/conferences/current
-  let path = url.pathname.replace(/^\/functions\/v1\/api\/?/, "").replace(/^\/v1\/?/, "/");
+  // Supabase strips /functions/v1, leaves /api (function name) + optional /v1
+  let path = url.pathname.replace(/^\/api\/?/, "/").replace(/^\/v1\/?/, "/");
   if (!path || path === "") path = "/";
 
   const supabaseAdmin = createClient(
@@ -98,9 +97,6 @@ serve(async (req: Request) => {
   );
 
   try {
-    // TEMP DEBUG
-    return json({ pathname: url.pathname, path, method: req.method, full_url: req.url }, corsHeaders);
-
     const { data: { user } } = await supabase.auth.getUser();
     const userId = user?.id;
 
