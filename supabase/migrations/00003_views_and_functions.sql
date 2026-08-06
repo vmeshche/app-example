@@ -5,7 +5,22 @@
 -- ── View: Full session info with speaker and room ───────────
 CREATE OR REPLACE VIEW session_details AS
 SELECT
-  s.*,
+  s.id,
+  s.event_id,
+  s.title,
+  s.description,
+  s.category_id,
+  s.room_id,
+  s.start_time,
+  s.end_time,
+  s.status,
+  s.image_url,
+  s.likes_count,
+  s.stream_url,
+  s.recording_url,
+  s.materials_url,
+  s.created_at,
+  s.updated_at,
   c.name  AS category_name,
   c.color AS category_color,
   r.name  AS room_name,
@@ -33,28 +48,35 @@ LEFT JOIN rooms r ON r.id = s.room_id;
 -- ── View: Speaker with their sessions ───────────────────────
 CREATE OR REPLACE VIEW speaker_details AS
 SELECT
-  sp.*,
-  COALESCE(
-    (
-      SELECT json_agg(json_build_object(
-        'id', s.id,
-        'title', s.title,
-        'start_time', s.start_time,
-        'end_time', s.end_time,
-        'status', s.status,
-        'room_name', r.name,
-        'category_name', c.name
-      ))
-      FROM session_speakers ss
-      JOIN sessions s ON s.id = ss.session_id
-      LEFT JOIN rooms r ON r.id = s.room_id
-      LEFT JOIN categories c ON c.id = s.category_id
-      WHERE ss.speaker_id = sp.id
-      ORDER BY s.start_time
-    ),
-    '[]'::json
-  ) AS sessions
-FROM speakers sp;
+  sp.id,
+  sp.event_id,
+  sp.name,
+  sp.company,
+  sp.role,
+  sp.bio,
+  sp.photo_url,
+  sp.topics,
+  sp.social_links,
+  sp.created_at,
+  sp.updated_at,
+  COALESCE(sess.sessions, '[]'::json) AS sessions
+FROM speakers sp
+LEFT JOIN LATERAL (
+  SELECT json_agg(json_build_object(
+    'id', s.id,
+    'title', s.title,
+    'start_time', s.start_time,
+    'end_time', s.end_time,
+    'status', s.status,
+    'room_name', r.name,
+    'category_name', c.name
+  ) ORDER BY s.start_time) AS sessions
+  FROM session_speakers ss
+  JOIN sessions s ON s.id = ss.session_id
+  LEFT JOIN rooms r ON r.id = s.room_id
+  LEFT JOIN categories c ON c.id = s.category_id
+  WHERE ss.speaker_id = sp.id
+) sess ON true;
 
 -- ── View: User schedule with session details ─────────────────
 CREATE OR REPLACE VIEW user_schedule AS
