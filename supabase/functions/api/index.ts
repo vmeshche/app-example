@@ -80,13 +80,15 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const url = new URL(req.url);
-  // Strip /functions/v1/api prefix + API version prefix
-  let path = url.pathname;
-  path = path.replace(/^\/functions\/v1\/api\/v1/, "").replace(/^\/v1/, "");
-  if (!path) path = "/";
+  // Supabase may or may not strip /functions/v1/api — handle both cases
+  let path = url.pathname
+    .replace(/^\/functions\/v1\/api\/v1/, "")
+    .replace(/^\/functions\/v1\/api/, "")
+    .replace(/^\/v1/, "");
+  if (!path || path === "/") path = "/debug";
 
-  // TEMP DEBUG: return path info for first test
-  if (path === "/debug") {
+  // DEBUG — always return path info on first request
+  if (req.method === "GET" && (path === "/debug" || path.startsWith("/debug"))) {
     return json({ pathname: url.pathname, path, method: req.method }, corsHeaders);
   }
 
