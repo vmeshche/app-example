@@ -41,11 +41,41 @@ serve(async (req: Request) => {
     // GET /event/:slug — Full event dashboard
     const eventMatch = path.match(/^\/event\/([a-z0-9-]+)$/);
     if (req.method === "GET" && eventMatch) {
-      const { data, error } = await supabaseAdmin.rpc("get_event_dashboard", {
-        event_slug: eventMatch[1],
-      });
-      if (error) throw error;
-      return json(data, corsHeaders);
+      const slug = eventMatch[1];
+
+      // Fetch event
+      const { data: event, error: eventErr } = await supabaseAdmin
+        .from("events").select("*").eq("slug", slug).single();
+      if (eventErr) throw eventErr;
+
+      const eventId = event.id;
+
+      // Fetch all dashboard data in parallel
+      const [
+        { data: live },
+        { data: upcoming },
+        { data: speakers },
+        { data: map },
+      ] = await Promise.all([
+        supabaseAdmin.from("session_details").select("*")
+          .eq("event_id", eventId).eq("status", "live")
+          .order("start_time", { ascending: true }),
+        supabaseAdmin.from("session_details").select("*")
+          .eq("event_id", eventId).eq("status", "upcoming")
+          .order("start_time", { ascending: true }).limit(10),
+        supabaseAdmin.from("speaker_details").select("*")
+          .eq("event_id", eventId).limit(6),
+        supabaseAdmin.from("venue_locations").select("*")
+          .eq("event_id", eventId).order("pos_y", { ascending: true }),
+      ]);
+
+      return json({
+        event,
+        live_sessions: live || [],
+        upcoming_sessions: upcoming || [],
+        featured_speakers: speakers || [],
+        venue_map: map || [],
+      }, corsHeaders);
     }
 
     // GET /sessions?event_id=...&status=...&category=...&q=...
