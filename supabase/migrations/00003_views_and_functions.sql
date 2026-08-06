@@ -117,30 +117,45 @@ BEGIN
       SELECT row_to_json(e.*) FROM events e WHERE e.slug = event_slug
     ),
     'live_sessions', (
-      SELECT json_agg(to_jsonb(sd) ORDER BY sd.start_time)
-      FROM session_details sd
-      JOIN events e ON e.id = sd.event_id
-      WHERE e.slug = event_slug AND sd.status = 'live'
+      SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)
+      FROM (
+        SELECT sd.*
+        FROM session_details sd
+        JOIN events e ON e.id = sd.event_id
+        WHERE e.slug = event_slug AND sd.status = 'live'
+        ORDER BY sd.start_time
+      ) t
     ),
     'upcoming_sessions', (
-      SELECT json_agg(to_jsonb(sd) ORDER BY sd.start_time)
-      FROM session_details sd
-      JOIN events e ON e.id = sd.event_id
-      WHERE e.slug = event_slug AND sd.status = 'upcoming'
-      LIMIT 10
+      SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)
+      FROM (
+        SELECT sd.*
+        FROM session_details sd
+        JOIN events e ON e.id = sd.event_id
+        WHERE e.slug = event_slug AND sd.status = 'upcoming'
+        ORDER BY sd.start_time
+        LIMIT 10
+      ) t
     ),
     'featured_speakers', (
-      SELECT json_agg(to_jsonb(sd))
-      FROM speaker_details sd
-      JOIN events e ON e.id = sd.event_id
-      WHERE e.slug = event_slug
-      LIMIT 6
+      SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)
+      FROM (
+        SELECT sd.*
+        FROM speaker_details sd
+        JOIN events e ON e.id = sd.event_id
+        WHERE e.slug = event_slug
+        LIMIT 6
+      ) t
     ),
     'venue_map', (
-      SELECT json_agg(to_jsonb(vl) ORDER BY vl.pos_y, vl.pos_x)
-      FROM venue_locations vl
-      JOIN events e ON e.id = vl.event_id
-      WHERE e.slug = event_slug
+      SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)
+      FROM (
+        SELECT vl.*
+        FROM venue_locations vl
+        JOIN events e ON e.id = vl.event_id
+        WHERE e.slug = event_slug
+        ORDER BY vl.pos_y, vl.pos_x
+      ) t
     )
   ) INTO result;
 
@@ -153,9 +168,13 @@ CREATE OR REPLACE FUNCTION get_my_schedule(user_id UUID)
 RETURNS JSONB AS $$
 BEGIN
   RETURN (
-    SELECT json_agg(to_jsonb(us) ORDER BY us.start_time)
-    FROM user_schedule us
-    WHERE us.user_id = get_my_schedule.user_id
+    SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)
+    FROM (
+      SELECT us.*
+      FROM user_schedule us
+      WHERE us.user_id = get_my_schedule.user_id
+      ORDER BY us.start_time
+    ) t
   );
 END;
 $$ LANGUAGE plpgsql STABLE;
